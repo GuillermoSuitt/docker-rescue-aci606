@@ -1,0 +1,30 @@
+### M-01 ANTES: persistencia SIN volumen
+$ curl -X POST /api/items
+{"id":1,"name":"dato antes del volumen","created_at":"2026-11-24T00:19:39.215454"}
+$ curl /api/items
+[{"id":1,"name":"dato antes del volumen","created_at":"2026-11-24T00:19:39.215454"}]
+$ docker compose down
+ Container docker-rescue-aci606-frontend-1 Stopping 
+ Container docker-rescue-aci606-frontend-1 Stopped 
+ Container docker-rescue-aci606-frontend-1 Removing 
+ Container docker-rescue-aci606-frontend-1 Removed 
+ Container docker-rescue-aci606-backend-1 Stopping 
+ Container docker-rescue-aci606-backend-1 Stopped 
+ Container docker-rescue-aci606-backend-1 Removing 
+ Container docker-rescue-aci606-backend-1 Removed 
+ Container docker-rescue-aci606-db-1 Stopping 
+ Container docker-rescue-aci606-db-1 Stopped 
+ Container docker-rescue-aci606-db-1 Removing 
+ Container docker-rescue-aci606-db-1 Removed 
+ Network docker-rescue-aci606_default Removing 
+ Network docker-rescue-aci606_default Removed 
+$ docker compose up -d
+ Container docker-rescue-aci606-backend-1 Started 
+ Container docker-rescue-aci606-frontend-1 Starting 
+ Container docker-rescue-aci606-frontend-1 Started 
+$ curl /api/items  (tras recrear)
+[]
+$ docker volume ls
+DRIVER    VOLUME NAME
+local     aeae4560d2cb8d1a7db932476ddf3fc060dee78f1ab741543dc82ecd7c8e0322
+local     e3a71ac48bf2bf53e1295f08d54893fd8c41b10ff48cf8b5309c8f7603724fa7

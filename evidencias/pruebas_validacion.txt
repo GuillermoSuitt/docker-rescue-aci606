@@ -1,0 +1,121 @@
+### PRUEBA 1: ARRANQUE LIMPIO
+$ docker compose up --build -d
+ Image docker-rescue-aci606-backend Built 
+ Image docker-rescue-aci606-frontend Built 
+ Network docker-rescue-aci606_default Creating 
+ Volume docker-rescue-aci606_pgdata Creating 
+ Volume docker-rescue-aci606_pgdata Creating 
+ Network docker-rescue-aci606_default Creating 
+ Volume docker-rescue-aci606_pgdata Created 
+ Volume docker-rescue-aci606_pgdata Created 
+ Network docker-rescue-aci606_default Created 
+ Network docker-rescue-aci606_default Created 
+ Container docker-rescue-aci606-db-1 Creating 
+ Container docker-rescue-aci606-db-1 Created 
+ Container docker-rescue-aci606-backend-1 Creating 
+ Container docker-rescue-aci606-backend-1 Created 
+ Container docker-rescue-aci606-frontend-1 Creating 
+ Container docker-rescue-aci606-frontend-1 Created 
+ Container docker-rescue-aci606-db-1 Starting 
+ Container docker-rescue-aci606-db-1 Started 
+ Container docker-rescue-aci606-db-1 Waiting 
+ Container docker-rescue-aci606-db-1 Healthy 
+ Container docker-rescue-aci606-backend-1 Starting 
+ Container docker-rescue-aci606-backend-1 Started 
+ Container docker-rescue-aci606-backend-1 Waiting 
+ Container docker-rescue-aci606-backend-1 Healthy 
+ Container docker-rescue-aci606-frontend-1 Starting 
+ Container docker-rescue-aci606-frontend-1 Started 
+$ docker compose ps
+NAME                              STATUS                    PORTS
+docker-rescue-aci606-backend-1    Up 6 seconds (healthy)    8000/tcp
+docker-rescue-aci606-db-1         Up 11 seconds (healthy)   5432/tcp
+docker-rescue-aci606-frontend-1   Up Less than a second     0.0.0.0:8080->80/tcp, [::]:8080->80/tcp
+
+### PRUEBA 2: COMUNICACION frontend -> backend -> db
+$ curl -i localhost:8080/api/health
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+{"status":"ok","database":"reachable"}
+
+$ curl -X POST localhost:8080/api/items
+{"id":1,"name":"dato persistente","created_at":"2026-11-24T00:22:06.042305"}
+$ curl localhost:8080/api/items
+[{"id":1,"name":"dato persistente","created_at":"2026-11-24T00:22:06.042305"}]
+$ docker compose exec frontend wget -qO- http://backend:8000/health
+{"status":"ok","database":"reachable"}
+$ docker compose exec db psql -U appuser -d appdb -c "SELECT id, name FROM items;"
+ id |       name       
+----+------------------
+  1 | dato persistente
+(1 row)
+
+
+### PRUEBA 3: PERSISTENCIA (volumen pgdata)
+$ docker volume ls
+DRIVER    VOLUME NAME
+local     docker-rescue-aci606_pgdata
+local     e3a71ac48bf2bf53e1295f08d54893fd8c41b10ff48cf8b5309c8f7603724fa7
+$ docker volume inspect docker-rescue-aci606_pgdata
+docker-rescue-aci606_pgdata -> /var/lib/docker/volumes/docker-rescue-aci606_pgdata/_data
+$ docker compose down   (sin -v)
+$ docker compose ps -a
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+$ docker compose up -d
+$ curl localhost:8080/api/items   (tras recrear los contenedores)
+[{"id":1,"name":"dato persistente","created_at":"2026-11-24T00:22:06.042305"}]
+
+### PRUEBA 4: FALLO CONTROLADO
+$ docker compose stop db
+ Container docker-rescue-aci606-db-1 Stopped 
+$ docker compose ps -a
+NAME                              STATUS
+docker-rescue-aci606-backend-1    Up 24 seconds (healthy)
+docker-rescue-aci606-db-1         Exited (0) 3 seconds ago
+docker-rescue-aci606-frontend-1   Up 19 seconds
+$ curl -i localhost:8080/            (pagina estatica)
+HTTP/1.1 200 OK
+$ curl -i localhost:8080/api/health
+HTTP/1.1 503 Service Unavailable
+{"detail":"database unavailable: (psycopg2.OperationalError) could not translate host name \"db\" to address: Name or service not known\n\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"}
+
+$ curl -i localhost:8080/api/items
+HTTP/1.1 500 Internal Server Error
+
+### PRUEBA 5: DIAGNOSTICO (db detenida)
+$ docker compose ps -a
+NAME                              STATUS
+docker-rescue-aci606-backend-1    Up About a minute (unhealthy)
+docker-rescue-aci606-db-1         Exited (0) About a minute ago
+docker-rescue-aci606-frontend-1   Up About a minute
+$ docker inspect --format {{.State.Health.Status}} backend
+estado=unhealthy fallos_consecutivos=8
+$ docker compose logs backend --tail 4
+INFO:     127.0.0.1:47764 - "GET /health HTTP/1.1" 503 Service Unavailable
+INFO:     127.0.0.1:51332 - "GET /health HTTP/1.1" 503 Service Unavailable
+INFO:     127.0.0.1:36208 - "GET /health HTTP/1.1" 503 Service Unavailable
+INFO:     127.0.0.1:55982 - "GET /health HTTP/1.1" 503 Service Unavailable
+$ docker compose logs frontend --tail 2
+172.18.0.1 - - [24/Nov/2026:00:23:18 +0000] "GET /api/health HTTP/1.1" 503 201 "https://humble-space-engine-p7p74r4rqwqrc76j6-8080.app.github.dev/" "M
+172.18.0.1 - - [24/Nov/2026:00:23:18 +0000] "GET /favicon.ico HTTP/1.1" 200 2561 "https://humble-space-engine-p7p74r4rqwqrc76j6-8080.app.github.dev/" 
+$ docker network inspect (contenedores conectados)
+docker-rescue-aci606-backend-1 172.18.0.3/16
+docker-rescue-aci606-frontend-1 172.18.0.4/16
+
+
+### PRUEBA 6: RECUPERACION
+$ docker compose start db
+ Container docker-rescue-aci606-db-1 Started 
+$ docker compose ps
+NAME                              STATUS
+docker-rescue-aci606-backend-1    Up About a minute (healthy)
+docker-rescue-aci606-db-1         Up 8 seconds (healthy)
+docker-rescue-aci606-frontend-1   Up About a minute
+$ curl -i localhost:8080/api/health
+HTTP/1.1 200 OK
+{"status":"ok","database":"reachable"}
+
+$ curl localhost:8080/api/items
+[{"id":1,"name":"dato persistente","created_at":"2026-11-24T00:22:06.042305"}]
+$ docker inspect (reinicios del backend)
+backend RestartCount=0 iniciado=2026-11-24T00:22:32.650715855Z
