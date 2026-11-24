@@ -1,0 +1,3 @@
+# Configuración local con credenciales: no se versiona (usar .env.example como plantilla)
+.env
+__pycache__/
